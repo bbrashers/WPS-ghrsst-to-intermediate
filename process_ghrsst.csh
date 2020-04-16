@@ -1,37 +1,5 @@
 #!/bin/csh -f
 
-if (-e /usr/local/src/netcdf-c-4.7.2.pgi/build) then
-    setenv NETCDF /usr/local/src/netcdf-c-4.7.2.pgi/build
-else
-    setenv NETCDF /usr/local/src/netcdf
-endif
-setenv NETCDFHOME $NETCDF
-setenv NETCDF_DIR $NETCDF
-if ( "${path}" !~ *${NETCDF}/bin* ) then
-    set path = ( ${NETCDF}/bin $path )
-endif
-if !($?LD_LIBRARY_PATH) then
-    setenv LD_LIBRARY_PATH $NETCDF_DIR/lib
-else
-    if ( "$LD_LIBRARY_PATH" !~ *$NETCDF_DIR/lib* ) then
-        setenv LD_LIBRARY_PATH $NETCDF_DIR/lib:${LD_LIBRARY_PATH}
-    endif
-endif
-setenv HDF5      /usr/local/src/hdf5-1.8.20.pgi
-setenv HDF5_DIR  $HDF5
-setenv HDF5_path $HDF5/bin
-setenv HDF5_VERSION 1.8.20
-if ( "${path}" !~ *${HDF5}/bin* ) then
-    set path = ( $path ${HDF5}/bin )
-endif
-if !($?LD_LIBRARY_PATH) then
-    setenv LD_LIBRARY_PATH $HDF5_DIR/lib
-else
-    if ( "$LD_LIBRARY_PATH" !~ *$HDF5_DIR/lib* ) then
-        setenv LD_LIBRARY_PATH $HDF5_DIR/lib:${LD_LIBRARY_PATH}
-    endif
-endif
-
 if ($#argv == 0 | "$1" =~ -*h*) then
     echo "Usage: $0:t filelist"
     echo "Processes a list of GHRSST files, one per line, by calling"
