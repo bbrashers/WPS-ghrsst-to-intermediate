@@ -1,0 +1,194 @@
+#!/bin/csh -f
+#
+if ($#argv == 0 | $1 =~ -*h*) then
+    usage:
+    echo "Usage: $0:t [Options] YrMoDyHr Delta | Yr-Mo-Dy_hr Delta | Yr Mo Dy Hr Delta"
+    echo "Options:"
+    echo "  -24    make hours be 1-24 (default is 0-23)"
+    echo "  --wrf  force output format to YYYY-MM-DD_HH (WRF/MM5 style)"
+    echo "  -1     force output format to YYYYMMDDHH    (one  word)"
+    echo "  -4     force output format to YYYY MM DD HH (four words)"
+    echo ""
+    echo "Yr, Mo, Dy and Hr are integers.  Yr can be 2 digits or 4 digits."
+    echo ""
+    echo "Delta is the amount of time to add (or subtract, if < 0) from the time-stamp."
+    echo "Examples of valid Delta values: "
+    echo "   1        add 1 hour"
+    echo "   -5       subtract 5 hours"
+    echo "   5d12h    add 5 days and 12 hours (same as 5d12)"
+    echo "   3y5m2d1h add 3 years, 5 month, 2 days, and 1 hour"
+    echo "   1y-1d    add 1 year, then subtract 1 day"
+    echo "   -3m1d    subtract 3 months, then add 1 day"
+    echo "   -3m-1d   subtract 3 months, then subtract another day"
+    echo ""
+    echo "One can 'legalize' illegal time-stamps, by adding 0 hours to it:"
+    echo "   $0:t 2014_22_35_92 0       gives   2015-11-07_20"
+    echo ""
+    echo "One can change from hour = 0-23 to hour = 1-24 format:"
+    echo "   $0:t -4 -24 2008030100 0   gives   2008 02 29 24"
+    echo ""
+    echo "Adding months when starting with a time-stamp near the end of a month"
+    echo "can give unexpected (though technically correct) results:"
+    echo "   $0:t 2014_08_31_12 1m      gives   2014-10-01_12"
+    echo "   $0:t 2014_10_31_12 -1m     gives   2014-10-01_12"
+    echo ""
+    echo "This is because September only has 30 days, so 2014-09-31_12 is really"
+    echo "the next day. So when adding months, use dy = 1 and hr = 0."
+    exit
+endif
+
+# Initialize some variables
+
+set yrs    = 0
+set mos    = 0
+set dys    = 0
+set hrs    = 0
+set maxhr  = 23
+set style  = 0 # 0 = same as input, 1 = YYYYMMDDHH, 2 = wrf-style, 4 = Y M D H
+set inputs = ""
+
+set iarg = 0                # index of command-line arguments
+while ($iarg < $#argv)
+    @ iarg++
+    if ("$argv[$iarg]" == "-24") then
+	set maxhr = 24
+    else if ("$argv[$iarg]" == "-1") then
+        set style = 1       # YYYYMMDDHH
+    else if ("$argv[$iarg]" == "--wrf") then
+	set style = 2       # YYYY-MM-DD_HH
+    else if ("$argv[$iarg]" == "-4") then
+	set style = 4       # YYYY MM DD HH
+    else
+	set inputs = ($argv[$iarg-$#argv])
+	set iarg = $#argv   # exit this while loop
+    endif
+end
+
+set minhr  = `echo $maxhr - 23 | bc`
+
+if ($#inputs == 2) then  # YYYYMMDDHH Delta
+
+    set tmp = `echo $inputs[1] | grep _ >& /dev/null`
+    if ($status == 0 & $style == 0) set style = 2
+    if ($style == 0) set style = 1 # got YYYYMMDDHH, give same
+
+    set timestamp = `echo $inputs[1] | tr -d "/_-"`
+    if ($%timestamp > 8) then # four-digit year
+	set year  = `echo $timestamp | cut -c1-4`
+	set month = `echo $timestamp | cut -c5-6`
+	set day   = `echo $timestamp | cut -c7-8`
+	set hour  = `echo $timestamp | cut -c9-10`
+    else # 2-digit year
+	set year  = `echo $timestamp | cut -c1-2`
+	set month = `echo $timestamp | cut -c3-4`
+	set day   = `echo $timestamp | cut -c5-6`
+	set hour  = `echo $timestamp | cut -c7-8`
+    endif
+    set delta  = $inputs[2]
+
+else                     # gave YYYY MM DD HH delta
+
+    if ($style == 0) set style = 4 # got YYYY MM DD HH, give same
+    set year   = $inputs[1]
+    set month  = $inputs[2]
+    set day    = $inputs[3]
+    set hour   = $inputs[4]
+    set delta  = $inputs[5]
+
+endif
+
+# Handle the case where delta is 5d (5 days) or 3h or 5d+3h or -5d-12h
+
+set din   = `echo $delta | tr -d '+h'`    # "delta-in" is din, get it?
+
+if ("$din" =~ *y*) then                   # there's a year, like 3y5d3h
+    set yrs = `echo $din | cut -d y -f1`  # whatever's before the "y"
+    set din = `echo $din | cut -d y -f2`  # remainder, like 5d3h
+endif
+
+if ("$din" =~ *m*) then                   # there's a month, like 3y2m5d3h
+    set mos = `echo $din | cut -d m -f1`  # whatever's before the "m"
+    set din = `echo $din | cut -d m -f2`  # remainder, like 5d3h
+endif
+
+if ("$din" =~ *d*) then                   # there's a day, like 5d3h
+    set dys = `echo $din | cut -d d -f1`  # whatever's before the "d"
+    set din = `echo $din | cut -d d -f2`  # what remains is hours
+endif
+
+if ($%din > 0) set hrs = $din             # whatever's left
+
+
+set daysinmonth = (31 28 31 30 31 30 31 31 30 31 30 31)
+if (`expr $year % 4` == 0) set daysinmonth[2] = 29 # leap year, Y2K compliant
+
+set yr = `echo "$year  + $yrs" | bc`
+set mo = `echo "$month + $mos" | bc`
+set dy = `echo "$day   + $dys" | bc`
+set hr = `echo "$hour  + $hrs" | bc`
+
+while ($mo > 12)                # if adding just months
+    set mo = `echo "$mo - 12" | bc`
+    set yr = `echo "$yr + 1"  | bc`
+end
+while ($mo < 1)                 # if subtracting just months
+    set mo = `echo "$mo + 12" | bc`
+    set yr = `echo "$yr - 1"  | bc`
+end
+
+while ($dy > $daysinmonth[$mo]) # if adding just days
+    set dy = `echo "$dy - $daysinmonth[$mo]" | bc`
+    set mo = `echo "$mo + 1" | bc`
+    while ($mo > 12)
+	set mo = `echo "$mo - 12" | bc`
+	set yr = `echo "$yr + 1"  | bc`
+    end
+end
+while ($dy < 1)                 # if subtracting just days
+    set mo = `echo "$mo - 1" | bc`
+    while ($mo < 1) 
+	set mo = `echo "$mo + 12" | bc`
+	set yr = `echo "$yr - 1"  | bc`
+    end
+    set dy = `echo "$dy + $daysinmonth[$mo]" | bc`
+end
+
+while ($hr > $maxhr)           # if adding hours
+    set hr = `echo "$hr - 24" | bc`
+    set dy = `echo "$dy + 1"  | bc`
+    while ($dy > $daysinmonth[$mo]) 
+        set dy = `echo "$dy - $daysinmonth[$mo]" | bc`
+	set mo = `echo "$mo + 1" | bc`
+        while ($mo > 12)
+	    set mo = `echo "$mo - 12" | bc`
+	    set yr = `echo "$yr + 1"  | bc`
+	end
+    end
+end
+while ($hr < $minhr)          # if subtracting hours
+    set hr = `echo "$hr + 24" | bc`
+    set dy = `echo "$dy - 1"  | bc`
+    while ($dy < 1) 
+	set mo = `echo "$mo - 1" | bc`
+        while ($mo < 1) 
+	    set mo = `echo "$mo + 12" | bc`
+	    set yr = `echo "$yr - 1"  | bc`
+	end
+        set dy = `echo "$dy + $daysinmonth[$mo]" | bc`
+    end
+end
+
+if ($%yr == 1) set yr = 0$yr     # make sure output is (at least) 2 digits
+if ($%mo == 1) set mo = 0$mo
+if ($%dy == 1) set dy = 0$dy
+if ($%hr == 1) set hr = 0$hr
+
+if ($style == 0) then
+    echo "Couldn't determine output style. Shouldn't happen..."
+else if ($style == 1) then # YYYYMMDDHH
+    echo $yr$mo$dy$hr
+else if ($style == 2) then # wrf style
+    echo $yr-$mo-${dy}_$hr
+else if ($style == 4) then # wrf style
+    echo $yr $mo $dy $hr
+endif
