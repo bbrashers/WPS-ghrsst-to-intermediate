@@ -1,7 +1,7 @@
 program ghrsst_to_intermediate
 !------------------------------------------------------------------------------
 ! Written by Bart Brashers, Ramboll, bbrashers@ramboll.com.
-! Last update: 2020-04-16 version 1.0
+! Last update: 2020-04-18 version 1.1
 ! Converts the data found at 
 !   https://podaac-opendap.jpl.nasa.gov/opendap/allData/ghrsst/data/GDS2/L4/GLOB/JPL/MUR/v4.1/
 !   https://podaac-opendap.jpl.nasa.gov/opendap/allData/ghrsst/data/L4/GLOB/JPL_OUROCEAN/G1SST/
@@ -28,6 +28,7 @@ program ghrsst_to_intermediate
   logical :: write_sst = .false.      ! Flag to output SST:YYYY-MM-DD_HH files
   logical :: write_ice = .false.      ! Flag to output SST:YYYY-MM-DD_HH files
   logical :: write_landsea = .false.  ! Flag to output LANDSEA:YYYY-MM-DD_HH files
+  logical :: append_landsea = .true.  ! Flag to append the LANDSEA to SST: and ICE:
   logical :: crosses_180E = .false.   ! Flag that the WRF domain crosses lon = 180
   integer, external  :: iargc
   integer            :: iarg          ! arguement index
@@ -120,6 +121,8 @@ program ghrsst_to_intermediate
         write_ice = .true.
      else if (arg == '-l' .or. arg == '--landsea') then
         write_landsea = .true.
+     else if (arg == '-n' .or. arg == '--nolandsea') then
+        append_landsea = .false.
      else if (arg == '-g') then
         iarg = iarg + 1
         call getarg(iarg,geofile)
@@ -136,10 +139,11 @@ program ghrsst_to_intermediate
   end do
 
   if ((.not. write_sst) .and. (.not. write_ice) .and. (.not. write_landsea)) then
-     write(*,*) "No outputs requested, nothing to do, quitting."
-     write(*,*) "Specify one of --sst, --ice, or --landsea."
      write(*,*) 
-     call usage ! will quit
+     write(*,*) "No outputs requested, nothing to do, quitting."
+     write(*,*) "Specify one of -s|--sst, -i|--ice, or -l|--landsea."
+     write(*,*) 
+     call usage ! calls stop
   endif
 
 ! Process the geo_em.d01.nc file, to find the domain extents by taking the
@@ -255,7 +259,9 @@ program ghrsst_to_intermediate
 
   end if ! if (geofile /= 'none' .and. geofile /= 'specified') then
 
+!*****************************************************************************
 ! Open the PODAAC GHRSST netCDF file
+!*****************************************************************************
 
   rcode = nf_open(ncfile,NF_NOWRITE,cdfid)
   if (rcode == 0) then
@@ -274,7 +280,7 @@ program ghrsst_to_intermediate
   hour = 12 ! middle of the day, even though GHRSST default is 09
   write(hdate,'(i4.4,"-",i2.2,"-",i2.2,"_",i2.2,":00:00")') year,month,day,hour
 
-! Get dimensions we need, and allocate
+! Get dimensions we need, and allocate only required arrays
 
   rcode = nf_inq_dimid(cdfid,'lat',id)
   rcode = nf_inq_dimlen(cdfid,id,ny)
@@ -283,11 +289,8 @@ program ghrsst_to_intermediate
   rcode = nf_inq_dimlen(cdfid,id,nx)
 
   if (debug) write(*,*) "Allocating for nx,ny = ",nx,ny
-  allocate( lats(ny),      lons(nx))
-  allocate( mask_in(nx,ny),landsea(nx,ny),landseaice(nx,ny) )
-  if (write_sst)     allocate( sst_in(nx,ny), sst(nx,ny)    )
-  if (write_ice)     allocate( ice_in(nx,ny), ice(nx,ny)    )
-  if (crosses_180E)  allocate( temp1d(nx)   , temp2d(nx,ny) )
+  allocate( lats(ny), lons(nx))
+  if (crosses_180E) allocate( temp1d(nx), temp2d(nx,ny) )
 
 ! Get the 1D vector of values for lat
 
@@ -319,73 +322,205 @@ program ghrsst_to_intermediate
   endif
 
 !*****************************************************************************
-! Always det the 2D grid of values for LANDSEA MASK
+! Get the 2D grid of values for LANDSEA MASK
 ! Make one mask for land vs sea (for SST), and one for land/ice vs sea (for SEAICE)
 !*****************************************************************************
 
-  rcode = nf_inq_varid(cdfid,'mask',id)
-  rcode = nf_inq_var(cdfid,id,varnam,ivtype,ndims,dimids,natts)
-  if (debug) write(*,*) 'ID, Number of dims for mask ',id,ndims
-  do i = 1,ndims
-     rcode = nf_inq_dimlen(cdfid,dimids(i),idims(i))
-     if (debug) write(*,*) 'Dimension ',i,idims(i)
-  enddo
+  if (write_landsea .or. append_landsea) then
 
-  if (nx /= idims(1)) print*, "nx (lon) and idims(1) don't match."
-  if (ny /= idims(2)) print*, "ny (lat) and idims(2) don't match."
-  if ( 1 /= idims(3)) print*, "idims(3) is not 1."
+     allocate( mask_in(nx,ny) )
 
-  istart(1) = 1
-  istop(1)  = nx
-  istart(2) = 1
-  istop(2)  = ny
-  istart(3) = 1
-  istop(3)  = 1
-  rcode     = nf_get_vara_int1(cdfid,id,istart,istop,mask_in)
+     rcode = nf_inq_varid(cdfid,'mask',id)
+     rcode = nf_inq_var(cdfid,id,varnam,ivtype,ndims,dimids,natts)
+     if (debug) write(*,*) 'ID, Number of dims for mask ',id,ndims
+     do i = 1,ndims
+        rcode = nf_inq_dimlen(cdfid,dimids(i),idims(i))
+        if (debug) write(*,*) 'Dimension ',i,idims(i)
+     enddo
 
-  landsea    = bad
-  landseaice = bad
+     if (nx /= idims(1)) print*, "nx (lon) and idims(1) don't match."
+     if (ny /= idims(2)) print*, "ny (lat) and idims(2) don't match."
+     if ( 1 /= idims(3)) print*, "idims(3) is not 1."
 
-  landsea    = mask_in ! change to a regular interger
+     istart(1) = 1
+     istop(1)  = nx
+     istart(2) = 1
+     istop(2)  = ny
+     istart(3) = 1
+     istop(3)  = 1
+     rcode     = nf_get_vara_int1(cdfid,id,istart,istop,mask_in)
 
-  if (crosses_180E) then
-     temp2d(1:(nx-imid+1),:) = landsea(imid:nx,:)
-     temp2d(imid:nx,:)       = landsea(1:(nx-imid+1),:)
-     landsea = temp2d
-  endif
+     if (write_sst .or. write_landsea) then
+        allocate( landsea(nx,ny) )
+        landsea    = bad
+        landsea    = mask_in ! change to a regular interger
 
-  landseaice = landsea ! we'll apply different codes below
-
-  if (debug) then
-     write(*,*) "rcode = ",rcode
-     write(*,*) "minval(mask_in) = ",minval(mask_in)
-     write(*,*) "maxval(mask_in) = ",maxval(mask_in)
-     write(*,*) "minval(landsea)  = ",minval(landsea)
-     write(*,*) "maxval(landsea)  = ",maxval(landsea)
-  end if
+        if (crosses_180E) then
+           temp2d(1:(nx-imid+1),:) = landsea(imid:nx,:)
+           temp2d(imid:nx,:)       = landsea(1:(nx-imid+1),:)
+           landsea = temp2d
+        endif
 
 ! convert from GHRSST's values:
 ! flag_meanings = "1=open-sea, 2=land, 5=open-lake, 9=open-sea with ice in the grid, \
 !   13=open-lake with ice in the grid"
 ! to WRF's 1 (land) or 0 (sea) values
 
-  where (landsea ==  1) landsea = 0 ! open-sea
-  where (landsea ==  2) landsea = 1 ! land
-  where (landsea ==  5) landsea = 0 ! open-lake, maybe should be 2 to use avg_tsfc?
-  where (landsea ==  9) landsea = 0 ! open-sea with ice in the grid
-  where (landsea == 13) landsea = 0 ! open-lake with ice in the grid"
+        where (landsea ==  1) landsea = 0 ! open-sea
+        where (landsea ==  2) landsea = 1 ! land
+        where (landsea ==  5) landsea = 0 ! open-lake, maybe should be 2 to use avg_tsfc?
+        where (landsea ==  9) landsea = 0 ! open-sea with ice in the grid
+        where (landsea == 13) landsea = 0 ! open-lake with ice in the grid"
 
-  where (landseaice ==  1) landseaice = 0 ! open-sea
-  where (landseaice ==  2) landseaice = 1 ! land
-  where (landseaice ==  5) landseaice = 0 ! open-lake, maybe should be 2 to use avg_tsfc?
-  where (landseaice ==  9) landseaice = 1 ! open-sea  with ice in the grid
-  where (landseaice == 13) landseaice = 1 ! open-lake with ice in the grid"
+        if (debug) then
+           write(*,*) "rcode = ",rcode
+           write(*,*) "minval(mask_in) = ",minval(mask_in)
+           write(*,*) "maxval(mask_in) = ",maxval(mask_in)
+           write(*,*) "minval(landsea)  = ",minval(landsea)
+           write(*,*) "maxval(landsea)  = ",maxval(landsea)
+        end if
+
+     end if
+
+     if (write_ice) then
+        allocate( landseaice(nx,ny) )
+        landseaice = bad
+        landseaice = landsea ! we'll apply different codes below
+
+        if (crosses_180E) then
+           temp2d(1:(nx-imid+1),:) = landsea(imid:nx,:)
+           temp2d(imid:nx,:)       = landsea(1:(nx-imid+1),:)
+           landsea = temp2d
+        endif
+
+        where (landseaice ==  1) landseaice = 0 ! open-sea
+        where (landseaice ==  2) landseaice = 1 ! land
+        where (landseaice ==  5) landseaice = 0 ! open-lake, maybe should be 2 to use avg_tsfc?
+        where (landseaice ==  9) landseaice = 1 ! open-sea  with ice in the grid
+        where (landseaice == 13) landseaice = 1 ! open-lake with ice in the grid"
+     end if
+
+  end if ! if (write_landsea .or. append_landsea) then
+
+!************************************************************************************
+! Set some defaults, to prepare for writing
+!************************************************************************************
+ 
+  xlvl = 200100.
+  dx = 0     ! km, not used in iProj = 0 (latlon)
+  dy = 0     ! km
+  map_source = 'JPL PODAAC GHRSST'
+  xfcst = 0.
+
+! set metadata
+
+  if (geofile == 'none') then ! output full grid
+
+     startloc = 'CENTER' ! SWCORNER means (1,1), CENTER means (nx/2,ny/2)
+     startlat = 0. ! lat ranges from  -90 to  90, or -80 to 80, center is 0.
+     startlon = 0. ! lon ranges from -180 to 180, center is 0.
+     ibeg     = 1  ! write the full dataset
+     jbeg     = 1
+     iend     = nx
+     jend     = ny
+
+  else ! output a sub-set of the full grid
+
+     startloc = 'SWCORNER' ! SWCORNER means (1,1), CENTER means (nx/2,ny/2)
+     startlat = min_lat
+     startlon = min_lon
+
+! Not all GHRSST products are the same, so rather than calculate we'll search
+
+     ibeg = 1
+     do while (lons(ibeg) <  min_lon)
+        ibeg = ibeg + 1
+     end do
+     iend = ibeg
+     do while (lons(iend) <= max_lon .and. iend < nx)
+        iend = iend + 1
+     end do
+
+     jbeg = 1
+     do while (lats(jbeg) <  min_lat)
+        jbeg = jbeg + 1
+     end do
+     jend = jbeg
+     do while (lats(jend) <= max_lat .and. jend < ny)
+        jend = jend + 1
+     end do
+
+  endif
+
+! Figure out the grid dx,dy even though there's a global attribute (text)
+! that says e.g. geospatial_lat_resolution = "0.01 degrees"
+
+  i = nx/2 ; j = ny/2  
+  deltalat = nint((lats(j+1) - lats(j))*10000.)/10000. ! round to 0.0001
+  deltalon = nint((lons(i+1) - lons(i))*10000.)/10000.
+  if (debug) then
+     write(*,*) "lats(1:10)", lats(1:10)
+     write(*,*) "lons(1:10)", lons(1:10)
+  endif
+
+  if (write_landsea) then ! different from append_landsea, instead make a file
+
+!************************************************************************************
+! Create LANDSEA:YYYY-MM-DD_HH, following metgrid/src/read_met_module.f90. 
+!************************************************************************************
+
+! set the filename, field, description, and units, and open the files
+
+     filename = 'LANDSEA:'//hdate(1:13)
+     field    = 'LANDSEA'
+     desc     = 'Land Sea Mask'
+     units    = ' '
+     write(*,*) "Creating ",trim(filename)
+     open(12,file=filename,form='unformatted',convert='big_endian')
+
+! Write to the file, assuming iProj = 0 Cylindrical equidistant = latlon
+
+     write(12) version
+     write(12) hdate,xfcst,map_source,field,units,desc,xlvl, &
+          iend-ibeg+1,jend-jbeg+1,iproj
+     write(12) startloc,startlat,startlon,deltalat,deltalon,earth_radius
+
+     if (debug) then
+        write(*,*) "hdate             ",hdate              
+        write(*,*) "xfcst             ",xfcst             
+        write(*,*) "map_source        ",map_source        
+        write(*,*) "field,units       ",field,units       
+        write(*,*) "desc              ",desc              
+        write(*,*) "xlvl              ",xlvl              
+        write(*,*) "nx,ny             ",nx,ny
+        write(*,*) "iProj             ",iProj              
+        write(*,*) "startloc          ",startloc          
+        write(*,*) "startlat,startlon ",startlat,startlon 
+        write(*,*) "deltalat,deltalon ",deltalat,deltalon 
+        write(*,*) "earth_radius      ",earth_radius      
+     endif
+
+!  3) WRITE WIND ROTATION FLAG
+
+     write(12) wind_grid_rel
+
+!  4) WRITE 2-D ARRAY OF DATA
+     
+     if (debug) write(*,1) "Writing LANDSEA, i-range = ",ibeg,iend," j-range = ",jbeg,jend
+     
+     write(12) landsea(ibeg:iend,jbeg:jend)
+     
+     close(12)
+     
+  end if ! if (write_landsea) then
+
+  if (write_sst) then
 
 !*****************************************************************************
 ! Get the variable attributes add_offset, scale_factor, and _FillValue for SST
 !*****************************************************************************
 
-  if (write_sst) then
+     allocate( sst_in(nx,ny), sst(nx,ny) )
 
      rcode = nf_inq_varid(cdfid,'analysed_sst',id)
      if (debug) write(*,*) "rcode,id of analysed_sst =",rcode,id
@@ -453,150 +588,9 @@ program ghrsst_to_intermediate
         write(*,*) "maxval(sst) = ",maxval(sst)
      end if
 
-  endif
-
 !************************************************************************************
-!-----Get the variable attributes add_offset, scale_factor, and _FillValue for SEAICE
+! Create SST:YYYY-MM-DD_HH, following metgrid/src/read_met_module.f90. 
 !************************************************************************************
-
-  if (write_ice) then
-     rcode = nf_inq_varid(cdfid,'sea_ice_fraction',id)
-     if (debug) write(*,*) "rcode,id of ice_fraction =",rcode,id
-     rcode = nf_get_att_int (cdfid,id,"_FillValue",  bad_value)
-     rcode = nf_get_att_real(cdfid,id,"add_offset",  add_offset)
-     rcode = nf_get_att_real(cdfid,id,"scale_factor",scale_factor)
-     rcode = nf_get_att_real(cdfid,id,"valid_min",   valid_min)
-     rcode = nf_get_att_real(cdfid,id,"valid_max",   valid_max)
-     if (debug) then
-        write(*,*) "For SEAICE:"
-        write(*,*) "_FillValue  ", bad_value
-        write(*,*) "add_offset  ", add_offset
-        write(*,*) "scale_factor", scale_factor
-        write(*,*) "valid_min   ", valid_min
-        write(*,*) "valid_max   ", valid_max
-     end if
-
-! Get the 2D grid of values for SEAICE
-
-     rcode = nf_inq_var(cdfid,id,varnam,ivtype,ndims,dimids,natts)
-     if (debug) write(*,*) 'ID, Number of dims for SEAICE ',id,ndims
-     do i = 1,ndims
-        rcode = nf_inq_dimlen(cdfid,dimids(i),idims(i))
-        if (debug) write(*,*) 'Dimension ',i,idims(i)
-     enddo
-
-     if (nx /= idims(1)) print*, "nx (lon) and idims(1) don't match."
-     if (ny /= idims(2)) print*, "ny (lat) and idims(2) don't match."
-     if ( 1 /= idims(3)) print*, "idims(3) is not 1."
-
-     istart(1) = 1
-     istop(1)  = nx
-     istart(2) = 1
-     istop(2)  = ny
-     istart(3) = 1
-     istop(3)  = 1
-     rcode = nf_get_vara_int1(cdfid,id,istart,istop,ice_in)
-
-     if (debug) then
-        write(*,*) "rcode = ",rcode
-        write(*,*) "minval(ice_in) = ",minval(ice_in)
-        write(*,*) "maxval(ice_in) = ",maxval(ice_in)
-     end if
-
-! scale the ice_in to find output sst values
-
-     ice = bad
-     where (ice_in /= bad_value) ice = add_offset + scale_factor * ice_in
-
-     if (crosses_180E) then
-        temp2d(1:(nx-imid+1),:) = ice(imid:nx,:)
-        temp2d(imid:nx,:)       = ice(1:(nx-imid+1),:)
-        ice = temp2d
-     endif
-
-     if (debug) then
-        i = nx/5 ; j = ny/2
-        write(*,*) "(i,j)          = ",i,j
-        write(*,*) "ice_in(i,j)    = ",ice_in(i,j)
-        write(*,*) "ice(i,j)   = ",ice(i,j)
-        write(*,*) "ice_in(nx,nx)  = ",ice_in(nx,ny)
-        write(*,*) "ice(nx,nx) = ",ice(nx,ny)
-        write(*,*) "minval(ice) = ",minval(ice)
-        write(*,*) "maxval(ice) = ",maxval(ice)
-     end if
-
-  end if
-
-! done with netcdf file, close it
-
-  rcode = nf_close(cdfid)
-
-!************************************************************************************
-! output the data, following metgrid/src/read_met_module.f90. 
-!************************************************************************************
-
-! set some defaults:
- 
-  xlvl = 200100.
-  dx = 0     ! km, not used in iProj = 0 (latlon)
-  dy = 0     ! km
-  map_source = 'JPL PODAAC GHRSST'
-  xfcst = 0.
-
-! set metadata
-
-  if (geofile == 'none') then ! output full grid
-
-     startloc = 'CENTER' ! SWCORNER means (1,1), CENTER means (nx/2,ny/2)
-     startlat = 0. ! lat ranges from  -90 to  90, or -80 to 80, center is 0.
-     startlon = 0. ! lon ranges from -180 to 180, center is 0.
-     ibeg     = 1  ! write the full dataset
-     jbeg     = 1
-     iend     = nx
-     jend     = ny
-
-  else ! output a sub-set of the full grid
-
-     startloc = 'SWCORNER' ! SWCORNER means (1,1), CENTER means (nx/2,ny/2)
-     startlat = min_lat
-     startlon = min_lon
-
-! Not all GHRSST products are the same, so rather than calculate we'll search
-
-     ibeg = 1
-     do while (lons(ibeg) <  min_lon)
-        ibeg = ibeg + 1
-     end do
-     iend = ibeg
-     do while (lons(iend) <= max_lon .and. iend < nx)
-        iend = iend + 1
-     end do
-
-     jbeg = 1
-     do while (lats(jbeg) <  min_lat)
-        jbeg = jbeg + 1
-     end do
-     jend = jbeg
-     do while (lats(jend) <= max_lat .and. jend < ny)
-        jend = jend + 1
-     end do
-
-  endif
-
-! Figure out the grid dx,dy even though there's a global attribute (text)
-! that says e.g. geospatial_lat_resolution = "0.01 degrees"
-
-  i = nx/2 ; j = ny/2  
-  deltalat = nint((lats(j+1) - lats(j))*10000.)/10000. ! round to 0.0001
-  deltalon = nint((lons(i+1) - lons(i))*10000.)/10000.
-  if (debug) then
-     write(*,*) "lats(1:10)", lats(1:10)
-     write(*,*) "lons(1:10)", lons(1:10)
-  endif
-
-! set the filename, field, description, and units, and open the files
-
-  if (write_sst) then
 
      filename = 'SST:'//hdate(1:13)
      field    = 'SST'
@@ -643,25 +637,106 @@ program ghrsst_to_intermediate
 
      write(12) sst(ibeg:iend,jbeg:jend)
 
+     if (append_landsea) then
+
 ! See https://forum.mmm.ucar.edu/phpBB3/viewtopic.php?f=31&t=9032, where I was told to 
 ! write the LANDSEA mask in WPS Intermediate files.
 
-     field    = 'LANDSEA'
-     desc     = 'Land Sea Mask'
-     units    = ' '
-     write(12) version
-     write(12) hdate,xfcst,map_source,field,units,desc,xlvl, &
-          iend-ibeg+1,jend-jbeg+1,iproj
-     write(12) startloc,startlat,startlon,deltalat,deltalon,earth_radius
-     write(12) wind_grid_rel 
-     write(12) landsea(ibeg:iend,jbeg:jend)
-     
-     close(12)
+        field    = 'LANDSEA'
+        desc     = 'Land Sea Mask'
+        units    = ' '
+        write(12) version
+        write(12) hdate,xfcst,map_source,field,units,desc,xlvl, &
+             iend-ibeg+1,jend-jbeg+1,iproj
+        write(12) startloc,startlat,startlon,deltalat,deltalon,earth_radius
+        write(12) wind_grid_rel 
+        write(12) landsea(ibeg:iend,jbeg:jend)
+        
+        close(12)
 
-  end if ! if (write_sst) then
-     
+     endif  ! if (append_landsea) then
+
+     deallocate( sst_in, sst ) ! done with these
+
+  endif
+
   if (write_ice) then
 
+!************************************************************************************
+!-----Get the variable attributes add_offset, scale_factor, and _FillValue for SEAICE
+!************************************************************************************
+
+     allocate( ice_in(nx,ny), ice(nx,ny) )
+
+     rcode = nf_inq_varid(cdfid,'sea_ice_fraction',id)
+     if (debug) write(*,*) "rcode,id of ice_fraction =",rcode,id
+     rcode = nf_get_att_int (cdfid,id,"_FillValue",  bad_value)
+     rcode = nf_get_att_real(cdfid,id,"add_offset",  add_offset)
+     rcode = nf_get_att_real(cdfid,id,"scale_factor",scale_factor)
+     rcode = nf_get_att_real(cdfid,id,"valid_min",   valid_min)
+     rcode = nf_get_att_real(cdfid,id,"valid_max",   valid_max)
+     if (debug) then
+        write(*,*) "For SEAICE:"
+        write(*,*) "_FillValue  ", bad_value
+        write(*,*) "add_offset  ", add_offset
+        write(*,*) "scale_factor", scale_factor
+        write(*,*) "valid_min   ", valid_min
+        write(*,*) "valid_max   ", valid_max
+     end if
+
+! Get the 2D grid of values for SEAICE
+
+     rcode = nf_inq_var(cdfid,id,varnam,ivtype,ndims,dimids,natts)
+     if (debug) write(*,*) 'ID, Number of dims for SEAICE ',id,ndims
+     do i = 1,ndims
+        rcode = nf_inq_dimlen(cdfid,dimids(i),idims(i))
+        if (debug) write(*,*) 'Dimension ',i,idims(i)
+     enddo
+
+     if (nx /= idims(1)) print*, "nx (lon) and idims(1) don't match."
+     if (ny /= idims(2)) print*, "ny (lat) and idims(2) don't match."
+     if ( 1 /= idims(3)) print*, "idims(3) is not 1."
+
+     istart(1) = 1
+     istop(1)  = nx
+     istart(2) = 1
+     istop(2)  = ny
+     istart(3) = 1
+     istop(3)  = 1
+     rcode = nf_get_vara_int1(cdfid,id,istart,istop,ice_in)
+
+     if (debug) then
+        write(*,*) "rcode = ",rcode
+        write(*,*) "minval(ice_in) = ",minval(ice_in)
+        write(*,*) "maxval(ice_in) = ",maxval(ice_in)
+     end if
+
+! scale the ice_in to find output ice values
+
+     ice = bad
+     where (ice_in /= bad_value) ice = add_offset + scale_factor * ice_in
+
+     if (crosses_180E) then
+        temp2d(1:(nx-imid+1),:) = ice(imid:nx,:)
+        temp2d(imid:nx,:)       = ice(1:(nx-imid+1),:)
+        ice = temp2d
+     endif
+
+     if (debug) then
+        i = nx/5 ; j = ny/2
+        write(*,*) "(i,j)          = ",i,j
+        write(*,*) "ice_in(i,j)    = ",ice_in(i,j)
+        write(*,*) "ice(i,j)   = ",ice(i,j)
+        write(*,*) "ice_in(nx,nx)  = ",ice_in(nx,ny)
+        write(*,*) "ice(nx,nx) = ",ice(nx,ny)
+        write(*,*) "minval(ice) = ",minval(ice)
+        write(*,*) "maxval(ice) = ",maxval(ice)
+     end if
+
+!************************************************************************************
+! Create ICE:YYYY-MM-DD_HH, following metgrid/src/read_met_module.f90. 
+!************************************************************************************
+  
      filename = 'SEAICE:'//hdate(1:13)
      field    = 'SEAICE'
      desc     = 'Sea Ice Flag'
@@ -701,72 +776,40 @@ program ghrsst_to_intermediate
 
      write(12) ice(ibeg:iend,jbeg:jend)
 
+     if (append_landsea) then
+
 ! See https://forum.mmm.ucar.edu/phpBB3/viewtopic.php?f=31&t=9032, where I was told to 
 ! write the LANDSEA mask in WPS Intermediate files.
 
-     field    = 'LANDSEA'
-     desc     = 'Land Sea Mask'
-     units    = ' '
-     write(12) version
-     write(12) hdate,xfcst,map_source,field,units,desc,xlvl, &
-          iend-ibeg+1,jend-jbeg+1,iproj
-     write(12) startloc,startlat,startlon,deltalat,deltalon,earth_radius
-     write(12) wind_grid_rel 
-     write(12) landseaice(ibeg:iend,jbeg:jend) ! landseaice has ice = 1, like land
-     
+        field    = 'LANDSEA'
+        desc     = 'Land Sea Mask'
+        units    = ' '
+        write(12) version
+        write(12) hdate,xfcst,map_source,field,units,desc,xlvl, &
+             iend-ibeg+1,jend-jbeg+1,iproj
+        write(12) startloc,startlat,startlon,deltalat,deltalon,earth_radius
+        write(12) wind_grid_rel 
+        write(12) landseaice(ibeg:iend,jbeg:jend) ! landseaice has ice = 1, like land
+
+        deallocate( landseaice )
+
+     end if  !      if (append_landsea) then
+
      close(12)
+
+     deallocate( ice_in, ice )
 
   end if ! if (write_ice) then
 
-  if (write_landsea) then
+! done with netcdf file, close it
 
-     filename = 'LANDSEA:'//hdate(1:13)
-     field    = 'LANDSEA'
-     desc     = 'Land Sea Mask'
-     units    = ' '
-     write(*,*) "Creating ",trim(filename)
-     open(12,file=filename,form='unformatted',convert='big_endian')
-
-! Write to the file, assuming iProj = 0 Cylindrical equidistant = latlon
-
-     write(12) version
-     write(12) hdate,xfcst,map_source,field,units,desc,xlvl, &
-          iend-ibeg+1,jend-jbeg+1,iproj
-     write(12) startloc,startlat,startlon,deltalat,deltalon,earth_radius
-
-     if (debug) then
-        write(*,*) "hdate             ",hdate              
-        write(*,*) "xfcst             ",xfcst             
-        write(*,*) "map_source        ",map_source        
-        write(*,*) "field,units       ",field,units       
-        write(*,*) "desc              ",desc              
-        write(*,*) "xlvl              ",xlvl              
-        write(*,*) "nx,ny             ",nx,ny
-        write(*,*) "iProj             ",iProj              
-        write(*,*) "startloc          ",startloc          
-        write(*,*) "startlat,startlon ",startlat,startlon 
-        write(*,*) "deltalat,deltalon ",deltalat,deltalon 
-        write(*,*) "earth_radius      ",earth_radius      
-     endif
-
-!  3) WRITE WIND ROTATION FLAG
-
-     write(12) wind_grid_rel
-
-!  4) WRITE 2-D ARRAY OF DATA
-     
-     if (debug) write(*,1) "Writing LANDSEA, i-range = ",ibeg,iend," j-range = ",jbeg,jend
-     
-     write(12) landsea(ibeg:iend,jbeg:jend)
-     
-     close(12)
-     
-  end if ! if (write_landsea) then
+  rcode = nf_close(cdfid)
 
   deallocate( lats, lons )
-  deallocate( mask_in, landsea )
-  if (write_sst)     deallocate( sst_in, sst )
-  if (write_ice)     deallocate( ice_in, ice )
+  if (allocated( mask_in )) deallocate( mask_in )
+  if (allocated( landsea )) deallocate( landsea )
+
+  write(*,*) " *** Successful completion of program ghrsst-to-intermediate ***"
   
 end program ghrsst_to_intermediate
 !
@@ -838,6 +881,7 @@ subroutine usage
   write(*,*) "    -s | --sst              Output SST:YYYY-MM-DD_HH files."
   write(*,*) "    -i | --seaice           Output SEAICE:YYYY-MM-DD_HH files."
   write(*,*) "    -l | --landsea          Output LANDSEA:YYYY-MM-DD_HH files."
+  write(*,*) "    -n | --nolandsea        Don't append LANDSEA mask to SST ICE files."
   write(*,*) "    -d | --debug            Print debug messages to the screen."
   write(*,*) "    -V | --version          Print version number and exit."
   write(*,*) "    -h | --help             Show this help message."

@@ -14,10 +14,10 @@ FFLAGS += -mp=nonuma -nomp        # fix for "can't find libnuma.so"
 #NETCDF = /usr/local/src/wrf/LIBS
 #HDF5   = /usr/local/src/hdf5-1.8.20.pgi
 INCL  = -I$(NETCDF)/include 
-#INCL += -I$(HDF5)/include
+INCL += -I$(HDF5)/include
 LIBS  = -L$(NETCDF)/lib -lnetcdf -lnetcdff
-#LIBS += -L$(HDF5)/lib -lhdf5_hl -lhdf5 -lm 
-#LIBS += -L/usr/lib64 -lz -ldl
+LIBS += -L$(HDF5)/lib -lhdf5_hl -lhdf5 -lm 
+LIBS += -L/usr/lib64 -lz -ldl
 
 PROGRAM = ghrsst-to-intermediate
 SOURCES = ghrsst-to-intermediate.f90 
