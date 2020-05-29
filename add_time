@@ -66,6 +66,16 @@ end
 
 set minhr  = `echo $maxhr - 23 | bc`
 
+# Detect if user gave YYYYMMDD, i.e. no HH. There's no other valid
+# input that is 8 characters long, so it must be YYYYMMDD
+
+if ($%inputs[1] == 8) set inputs = ($inputs[1]00 $inputs[2-])
+
+# Detect if user gave YYYY-MM-DD, i.e. no _HH, and append _00
+
+set tmp = `echo $inputs[1] | cut -c5` # 5th char is -, so YYYY-
+if ($%inputs[1] == 10 & "$tmp" == "-") set inputs = ($inputs[1]_00 $inputs[2-])
+
 if ($#inputs == 2) then  # YYYYMMDDHH Delta
 
     set tmp = `echo $inputs[1] | grep _ >& /dev/null`
@@ -118,10 +128,55 @@ endif
 
 if ($%din > 0) set hrs = $din             # whatever's left
 
+#set din   = `echo $delta | tr -d '+h'`    # "delta-in" is din, get it?
+#set negative = 0                          # false, default is adding time
+#if ("$din" =~ *-*) then                   # a negative in there somewhere
+#    set negative = 1                      # will pre-pend below
+#    set din = `echo $din | tr -d -- -`
+#endif
+#
+#set delta = 0                             # will be in hours
+#
+#if ("$din" =~ *y*) then                   # there's a year, like 3y5d3h
+#    set yr  = `echo $din | cut -d y -f1`  # whatever's before the "y"
+#    foreach y (`seq 1 $yr`)
+#	set yr1 = $y
+#	if ("$negative" == "-") set yr1 = `echo "$yr - 1" | bc`
+#	set days = `julian -y ${yr1}1231`
+#	set delta = `echo "$delta + $yr * 365 * 24" | bc`
+#    end
+#    set din = `echo $din | cut -d y -f2`  # remainder, like 5d3h
+#endif
+#
+#if ("$din" =~ *d*) then                   # there's a day, like 5d3h
+#    set dy = `echo $din | cut -d d -f1`
+#    set delta = `echo "$delta + $dy * 24" | bc`
+#    set din = `echo $din | cut -d d -f2`  # what remains is hours
+#endif
+#
+#if ($%din > 0) set delta = `echo "$delta + $din" | bc`
+#
+#if ($negative) set delta = -$delta
+#
+# Tested this method, using "date +%s" to find seconds in epoch.
+# But it will not allow for hr to be range 1:24.  Stick with old method.
+#
+#set strt  = `date -d "$year-$month-$day $hour" +%s`
+#set delta = `echo "$delta * 3600" | bc` # date gives seconds since epoch
+#set endd  = `echo $strt + $delta | bc`
+#
+#if ($style == 1) then
+#    date -d @$endd +%Y%m%d%H
+#else if ($style == 2) then
+#    date -d @$endd +%Y-%m-%d_%H
+#else if ($style == 4) then
+#    date -d @$endd +"%Y %m %d %H"
+#endif
+#exit
 
 set daysinmonth = (31 28 31 30 31 30 31 31 30 31 30 31)
 if (`expr $year % 4` == 0) set daysinmonth[2] = 29 # leap year, Y2K compliant
-
+#
 set yr = `echo "$year  + $yrs" | bc`
 set mo = `echo "$month + $mos" | bc`
 set dy = `echo "$day   + $dys" | bc`

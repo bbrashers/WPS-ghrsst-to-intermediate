@@ -42,6 +42,7 @@ program ghrsst_to_intermediate
   integer            :: i,j,rcode, ivtype 
   integer            :: cdfid, id, ndims,natts, idims(10),dimids(10)
   integer            :: istart1,iend1, istart(3),istop(3)
+  integer            :: geoflag       ! 0 = none, 1 = geo_em given, 2 = bounds given
 
   integer (kind=2), allocatable, dimension(:,:) :: sst_in   ! 16-bit signed integer
   integer (kind=1), allocatable, dimension(:,:) :: ice_in   !  8-bit integer (byte)
@@ -97,7 +98,7 @@ program ghrsst_to_intermediate
 
 !----Set defaults
 
-  geofile = 'none'
+  geoflag = 0 ! default to no geo_em or bounds specified
   prog_version = "ghrsst_to_intermediate-0.2"
 
 !----Process the command line
@@ -126,13 +127,14 @@ program ghrsst_to_intermediate
      else if (arg == '-g') then
         iarg = iarg + 1
         call getarg(iarg,geofile)
+        geoflag = 1 ! a geo_em.nc file was given
      else if (arg == '-b') then
         iarg = iarg + 1
         call getarg(iarg,arg)
         read(arg,*) min_lat,max_lat,min_lon,max_lon
         min_lat = floor(min_lat) ; max_lat = ceiling(max_lat) ! round
         min_lon = floor(min_lon) ; max_lon = ceiling(max_lon) ! up/down
-        geofile = "specified" 
+        geoflag = 2 ! bounds were given
      else
         call getarg(iarg,ncfile)
      endif
@@ -150,7 +152,7 @@ program ghrsst_to_intermediate
 ! minval and maxval of XLAT_V and XLONG_U. Check the cornerns of the domain
 ! to detect if the WRF domain spans lon = 180. 
 
-  if (geofile /= 'none' .and. geofile /= 'specified') then
+  if (geoflag == 1) then
 
      rcode = nf_open(geofile,NF_NOWRITE,cdfid)
      if (rcode == 0) then
@@ -217,6 +219,8 @@ program ghrsst_to_intermediate
      min_lon = minval(lon2d)
      max_lon = maxval(lon2d)
      
+     deallocate( lat2d, lon2d ) ! Done with these
+
      if (debug) then
         write(*,*) "Initial sub-domain:"
         write(*,*) "min_lat = ",min_lat
@@ -255,9 +259,34 @@ program ghrsst_to_intermediate
         write(*,*) "se_lon  = ",se_lon
      end if
 
-     deallocate( lat2d, lon2d )
+  elseif (geoflag == 2) then ! user specified a lat-lon range
 
-  end if ! if (geofile /= 'none' .and. geofile /= 'specified') then
+! Handle the case of WRF domain crossing lon = 180 by changing lon range from
+! -180:180 to 0:360. If lon < 0, add 360. And we'll have to re-build the 
+! data from the GHRSST file.
+! *** FIXME: this is un-tested!
+
+     if ( min_lon > max_lon) then
+
+        crosses_180E = .true. 
+     
+        if (min_lon  < 0.) min_lon = min_lon  + 360.
+        if (max_lon  < 0.) max_lon = max_lon  + 360.
+   
+        where (lon2d < 0.) lon2d = lon2d + 360. 
+
+        if (debug) then
+           write(*,*) "Requested lat-lon box crosses the line lon = +/-180"
+           write(*,*) "Revised output sub-domain:"
+           write(*,*) "min_lat = ",min_lat
+           write(*,*) "max_lat = ",max_lat
+           write(*,*) "min_lon = ",min_lon
+           write(*,*) "max_lon = ",max_lon
+        endif
+
+     endif
+
+  end if ! if (geoflag == 1) then
 
 !*****************************************************************************
 ! Open the PODAAC GHRSST netCDF file
@@ -307,6 +336,8 @@ program ghrsst_to_intermediate
   rcode = nf_get_vara_real(cdfid,id,1,nx,lons)
 
   if (crosses_180E) then     ! swap the left & right halves of the array
+
+     if (debug) write(*,*) "Output domain crosses lon=180E line, rearranging array."
 
      imid = nx/2+1
      if (debug) write(*,*) "1, nx-imid+1, imid, nx = ", 1, nx-imid+1, imid, nx
@@ -414,7 +445,7 @@ program ghrsst_to_intermediate
 
 ! set metadata
 
-  if (geofile == 'none') then ! output full grid
+  if (geoflag == 0) then ! output full grid
 
      startloc = 'CENTER' ! SWCORNER means (1,1), CENTER means (nx/2,ny/2)
      startlat = 0. ! lat ranges from  -90 to  90, or -80 to 80, center is 0.
@@ -423,6 +454,11 @@ program ghrsst_to_intermediate
      jbeg     = 1
      iend     = nx
      jend     = ny
+     if (debug) then
+        write(*,*) "Will output FULL grid:"
+        write(*,*) "  i-range: ",ibeg," to ",iend
+        write(*,*) "  j-range: ",jbeg," to ",jend
+     endif
 
   else ! output a sub-set of the full grid
 
@@ -449,6 +485,11 @@ program ghrsst_to_intermediate
      do while (lats(jend) <= max_lat .and. jend < ny)
         jend = jend + 1
      end do
+     if (debug) then
+        write(*,*) "Will output SUB-grid:"
+        write(*,*) "  i-range: ",ibeg," to ",iend
+        write(*,*) "  j-range: ",jbeg," to ",jend
+     endif
 
   endif
 
