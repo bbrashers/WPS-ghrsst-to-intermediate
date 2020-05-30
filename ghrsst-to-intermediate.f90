@@ -1,7 +1,7 @@
 program ghrsst_to_intermediate
 !------------------------------------------------------------------------------
 ! Written by Bart Brashers, Ramboll, bbrashers@ramboll.com.
-! Last update: 2020-04-18 version 1.1
+! Last update: 2020-05-29 version 1.2
 ! Converts the data found at 
 !   https://podaac-opendap.jpl.nasa.gov/opendap/allData/ghrsst/data/GDS2/L4/GLOB/JPL/MUR/v4.1/
 !   https://podaac-opendap.jpl.nasa.gov/opendap/allData/ghrsst/data/L4/GLOB/JPL_OUROCEAN/G1SST/
