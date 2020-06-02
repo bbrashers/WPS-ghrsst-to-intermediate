@@ -1,7 +1,7 @@
 program ghrsst_to_intermediate
 !------------------------------------------------------------------------------
 ! Written by Bart Brashers, Ramboll, bbrashers@ramboll.com.
-! Last update: 2020-05-29 version 1.2
+! Last update: 2020-06-02 version 1.3
 ! Converts the data found at 
 !   https://podaac-opendap.jpl.nasa.gov/opendap/allData/ghrsst/data/GDS2/L4/GLOB/JPL/MUR/v4.1/
 !   https://podaac-opendap.jpl.nasa.gov/opendap/allData/ghrsst/data/L4/GLOB/JPL_OUROCEAN/G1SST/
@@ -30,7 +30,8 @@ program ghrsst_to_intermediate
   logical :: write_landsea = .false.  ! Flag to output LANDSEA:YYYY-MM-DD_HH files
   logical :: append_landsea = .true.  ! Flag to append the LANDSEA to SST: and ICE:
   logical :: crosses_180E = .false.   ! Flag that the WRF domain crosses lon = 180
-  integer, external  :: iargc
+! integer, intrinsic :: iargc         ! gfortran  understands this
+  integer, external  :: iargc         ! pgfortran understands this
   integer            :: iarg          ! arguement index
   integer, parameter :: version = 5   ! Format version (must =5 for WPS format)
   integer, parameter :: iProj = 0     ! Projection type is lat-lon
@@ -52,8 +53,8 @@ program ghrsst_to_intermediate
   real, allocatable, dimension(:,:) :: landsea     ! output land-sea mask
   real, allocatable, dimension(:,:) :: landseaice  ! output land-seaice mask
   real, allocatable, dimension(:)   :: lats,lons   ! output locs, 1D vectors
-  real, allocatable, dimension(:)   :: temp1d      ! for re-shaping 
-  real, allocatable, dimension(:,:) :: temp2d      ! for re-shaping 
+  real, allocatable, dimension(:)   :: my_temp1d   ! for re-shaping 
+  real, allocatable, dimension(:,:) :: my_temp2d   ! for re-shaping 
   real, allocatable, dimension(:,:) :: lat2d,lon2d ! geo_em XLAT_V,XLONG_U
 
   real,    parameter :: bad = -1.e+30 ! value found in FILE:* from NAM12
@@ -319,7 +320,7 @@ program ghrsst_to_intermediate
 
   if (debug) write(*,*) "Allocating for nx,ny = ",nx,ny
   allocate( lats(ny), lons(nx))
-  if (crosses_180E) allocate( temp1d(nx), temp2d(nx,ny) )
+  if (crosses_180E) allocate( my_temp1d(nx), my_temp2d(nx,ny) )
 
 ! Get the 1D vector of values for lat
 
@@ -345,9 +346,9 @@ program ghrsst_to_intermediate
 ! Copy the right half, imid:nx,     to the left  half. 
 ! Copy the left  half, 1:nx-imid+1, to the right half.
 
-     temp1d(1:(nx-imid+1)) = lons(imid:nx)
-     temp1d(imid:nx)       = lons(1:(nx-imid+1))
-     lons = temp1d
+     my_temp1d(1:(nx-imid+1)) = lons(imid:nx)
+     my_temp1d(imid:nx)       = lons(1:(nx-imid+1))
+     lons = my_temp1d
      where (lons <= 0.) lons = lons + 360.
 
   endif
@@ -387,9 +388,9 @@ program ghrsst_to_intermediate
         landsea    = mask_in ! change to a regular interger
 
         if (crosses_180E) then
-           temp2d(1:(nx-imid+1),:) = landsea(imid:nx,:)
-           temp2d(imid:nx,:)       = landsea(1:(nx-imid+1),:)
-           landsea = temp2d
+           my_temp2d(1:(nx-imid+1),:) = landsea(imid:nx,:)
+           my_temp2d(imid:nx,:)       = landsea(1:(nx-imid+1),:)
+           landsea = my_temp2d
         endif
 
 ! convert from GHRSST's values:
@@ -419,9 +420,9 @@ program ghrsst_to_intermediate
         landseaice = landsea ! we'll apply different codes below
 
         if (crosses_180E) then
-           temp2d(1:(nx-imid+1),:) = landsea(imid:nx,:)
-           temp2d(imid:nx,:)       = landsea(1:(nx-imid+1),:)
-           landsea = temp2d
+           my_temp2d(1:(nx-imid+1),:) = landsea(imid:nx,:)
+           my_temp2d(imid:nx,:)       = landsea(1:(nx-imid+1),:)
+           landsea = my_temp2d
         endif
 
         where (landseaice ==  1) landseaice = 0 ! open-sea
@@ -613,9 +614,9 @@ program ghrsst_to_intermediate
      where (sst_in /= bad_value) sst = add_offset + scale_factor * sst_in
 
      if (crosses_180E) then
-        temp2d(1:(nx-imid+1),:) = sst(imid:nx,:)
-        temp2d(imid:nx,:)       = sst(1:(nx-imid+1),:)
-        sst = temp2d
+        my_temp2d(1:(nx-imid+1),:) = sst(imid:nx,:)
+        my_temp2d(imid:nx,:)       = sst(1:(nx-imid+1),:)
+        sst = my_temp2d
      endif
 
      if (debug) then
@@ -758,9 +759,9 @@ program ghrsst_to_intermediate
      where (ice_in /= bad_value) ice = add_offset + scale_factor * ice_in
 
      if (crosses_180E) then
-        temp2d(1:(nx-imid+1),:) = ice(imid:nx,:)
-        temp2d(imid:nx,:)       = ice(1:(nx-imid+1),:)
-        ice = temp2d
+        my_temp2d(1:(nx-imid+1),:) = ice(imid:nx,:)
+        my_temp2d(imid:nx,:)       = ice(1:(nx-imid+1),:)
+        ice = my_temp2d
      endif
 
      if (debug) then
@@ -934,8 +935,8 @@ subroutine usage
   write(*,*) "https://podaac.jpl.nasa.gov/datasetlist?ids=ProcessingLevel&values=*4*&search=GHRSST&view=list"
   write(*,*)
   write(*,*) "Example: "
-  write(*,*) "ghrsst-to-intermediate -sst -l -g ../ERA5/geo_em.d01.nc ", & 
-       "2014/20140101090000-JPL-L4_GHRSST-SSTfnd-MUR-GLOB-v02.0-fv04.1.nc"
+  write(*,*) "ghrsst-to-intermediate -sst -l -g ../ERA5/geo_em.d01.nc \\"
+  write(*,*) "  2014/20140101090000-JPL-L4_GHRSST-SSTfnd-MUR-GLOB-v02.0-fv04.1.nc"
   stop
 
 end subroutine usage

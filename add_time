@@ -2,14 +2,15 @@
 #
 if ($#argv == 0 | $1 =~ -*h*) then
     usage:
-    echo "Usage: $0:t [Options] YrMoDyHr Delta | Yr-Mo-Dy_hr Delta | Yr Mo Dy Hr Delta"
+    echo "Usage: $0:t [Options] YearMoDyHr Delta | Year-Mo-Dy_hr Delta | Year Mo Dy Hr Delta | YearMoDy Delta"
     echo "Options:"
     echo "  -24    make hours be 1-24 (default is 0-23)"
     echo "  --wrf  force output format to YYYY-MM-DD_HH (WRF/MM5 style)"
     echo "  -1     force output format to YYYYMMDDHH    (one  word)"
     echo "  -4     force output format to YYYY MM DD HH (four words)"
+    echo "  -8     force output format to YYYYMMDD (8 chars, no hour)"
     echo ""
-    echo "Yr, Mo, Dy and Hr are integers.  Yr can be 2 digits or 4 digits."
+    echo "Year, Mo, Dy and Hr are integers.  Year can be 2 digits or 4 digits."
     echo ""
     echo "Delta is the amount of time to add (or subtract, if < 0) from the time-stamp."
     echo "Examples of valid Delta values: "
@@ -58,6 +59,8 @@ while ($iarg < $#argv)
 	set style = 2       # YYYY-MM-DD_HH
     else if ("$argv[$iarg]" == "-4") then
 	set style = 4       # YYYY MM DD HH
+    else if ("$argv[$iarg]" == "-8") then
+	set style = 8       # YYYYMMDD
     else
 	set inputs = ($argv[$iarg-$#argv])
 	set iarg = $#argv   # exit this while loop
@@ -69,7 +72,9 @@ set minhr  = `echo $maxhr - 23 | bc`
 # Detect if user gave YYYYMMDD, i.e. no HH. There's no other valid
 # input that is 8 characters long, so it must be YYYYMMDD
 
-if ($%inputs[1] == 8) set inputs = ($inputs[1]00 $inputs[2-])
+if ($%inputs[1] == 8) then 
+    set inputs = ($inputs[1]00 $inputs[2-])
+endif
 
 # Detect if user gave YYYY-MM-DD, i.e. no _HH, and append _00
 
@@ -246,4 +251,6 @@ else if ($style == 2) then # wrf style
     echo $yr-$mo-${dy}_$hr
 else if ($style == 4) then # wrf style
     echo $yr $mo $dy $hr
+else if ($style == 8) then # YYYYMMDD no hour
+    echo $yr$mo$dy
 endif

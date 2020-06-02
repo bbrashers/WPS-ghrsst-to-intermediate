@@ -34,6 +34,15 @@ the current directory, to extract the minimum domain in the
 SST:YYYY-MM-DD_HH files. I call the script from my WPS generator
 script.
 
+COMPILING
+
+A sample makefile is included, with some commented-out blocks for different
+compilers.
+
+I have one report that "integer, external" should be "integer, intrinsic" 
+for gfortran (gcc). That's the only change to the *.f90 files you might
+need to make to compile the program.
+
 Bart Brashers
 bbrashers@ramboll.com
-2020-04-16
+2020-06-02
