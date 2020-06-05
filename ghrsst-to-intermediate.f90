@@ -1,7 +1,7 @@
 program ghrsst_to_intermediate
 !------------------------------------------------------------------------------
 ! Written by Bart Brashers, Ramboll, bbrashers@ramboll.com.
-! Last update: 2020-06-02 version 1.3
+! based on Last update: 2020-06-02 version 1.3
 ! Converts the data found at 
 !   https://podaac-opendap.jpl.nasa.gov/opendap/allData/ghrsst/data/GDS2/L4/GLOB/JPL/MUR/v4.1/
 !   https://podaac-opendap.jpl.nasa.gov/opendap/allData/ghrsst/data/L4/GLOB/JPL_OUROCEAN/G1SST/
@@ -12,7 +12,8 @@ program ghrsst_to_intermediate
 !   https://podaac.jpl.nasa.gov/datasetlist?ids=ProcessingLevel&values=*4*&search=GHRSST&view=list
 !   https://podaac.jpl.nasa.gov/dataset/JPL_OUROCEAN-L4UHfnd-GLOB-G1SST
 !   https://podaac.jpl.nasa.gov/dataset/MUR-JPL-L4-GLOB-v4.1
-!
+!da: 2020-06-05 version 1.4  : LANDSEA was replaced with SST_MASK follwoing the ideas in thread Mon May 11, 2020 9:09 pm:
+! https://forum.mmm.ucar.edu/phpBB3/viewtopic.php?f=31&t=9049
 !----------------------------------------------------------------------
 ! This program is free software, using GNU General Public License v3.0.
 ! See the file COPYING, or https://www.gnu.org/licenses/gpl-3.0.en.html
@@ -27,7 +28,7 @@ program ghrsst_to_intermediate
   logical :: debug = .false.          ! set to .true. to debug
   logical :: write_sst = .false.      ! Flag to output SST:YYYY-MM-DD_HH files
   logical :: write_ice = .false.      ! Flag to output SST:YYYY-MM-DD_HH files
-  logical :: write_landsea = .false.  ! Flag to output LANDSEA:YYYY-MM-DD_HH files
+  logical :: write_landsea = .false.  ! Flag to output SST_MASK:YYYY-MM-DD_HH; !da LANDSEA:YYYY-MM-DD_HH files
   logical :: append_landsea = .true.  ! Flag to append the LANDSEA to SST: and ICE:
   logical :: crosses_180E = .false.   ! Flag that the WRF domain crosses lon = 180
 ! integer, intrinsic :: iargc         ! gfortran  understands this
@@ -512,9 +513,9 @@ program ghrsst_to_intermediate
 !************************************************************************************
 
 ! set the filename, field, description, and units, and open the files
-
-     filename = 'LANDSEA:'//hdate(1:13)
-     field    = 'LANDSEA'
+!da  filename = 'LANDSEA:'//hdate(1:13)
+     filename = 'SST_MASK:'//hdate(1:13)
+     field    = 'SST_MASK'  !da field = 'LANDSEA'
      desc     = 'Land Sea Mask'
      units    = ' '
      write(*,*) "Creating ",trim(filename)
@@ -548,7 +549,7 @@ program ghrsst_to_intermediate
 
 !  4) WRITE 2-D ARRAY OF DATA
      
-     if (debug) write(*,1) "Writing LANDSEA, i-range = ",ibeg,iend," j-range = ",jbeg,jend
+     if (debug) write(*,1) "Writing SST_MASK LANDSEA, i-range = ",ibeg,iend," j-range = ",jbeg,jend
      
      write(12) landsea(ibeg:iend,jbeg:jend)
      
@@ -683,8 +684,8 @@ program ghrsst_to_intermediate
 
 ! See https://forum.mmm.ucar.edu/phpBB3/viewtopic.php?f=31&t=9032, where I was told to 
 ! write the LANDSEA mask in WPS Intermediate files.
-
-        field    = 'LANDSEA'
+!da     field    = 'LANDSEA'
+        field    = 'SST_MASK'
         desc     = 'Land Sea Mask'
         units    = ' '
         write(12) version
@@ -822,8 +823,8 @@ program ghrsst_to_intermediate
 
 ! See https://forum.mmm.ucar.edu/phpBB3/viewtopic.php?f=31&t=9032, where I was told to 
 ! write the LANDSEA mask in WPS Intermediate files.
-
-        field    = 'LANDSEA'
+!da     field    = 'LANDSEA'
+        field    = 'ICE_MASK' !da
         desc     = 'Land Sea Mask'
         units    = ' '
         write(12) version
@@ -922,7 +923,7 @@ subroutine usage
   write(*,*) "    -b Slat,Nlat,Wlon,Elon  Specify sub-grid manually (no spaces)."
   write(*,*) "    -s | --sst              Output SST:YYYY-MM-DD_HH files."
   write(*,*) "    -i | --seaice           Output SEAICE:YYYY-MM-DD_HH files."
-  write(*,*) "    -l | --landsea          Output LANDSEA:YYYY-MM-DD_HH files."
+  write(*,*) "    -l | --landsea          Output SST_MASK:YYYY-MM-DD_HH files. (former LANDSEA)"
   write(*,*) "    -n | --nolandsea        Don't append LANDSEA mask to SST ICE files."
   write(*,*) "    -d | --debug            Print debug messages to the screen."
   write(*,*) "    -V | --version          Print version number and exit."
