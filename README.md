@@ -49,6 +49,7 @@ bbrashers@ramboll.com
 
 !da ------  
  2020-06-10  
- 'SST_MASK' replaced the 'LANDSEA'; 
- I need to move forward subroutine call reading analysed_sst and need create "mask_in" instead of reading it from ghrsss, because mur_sst   file has no mask field, only 'bad' grid-cells it has
+ The 'LANDSEA' was repalced with 'SST_MASK'. 
+ I need to move forward call to read 'analysed_sst' and create "mask_in", instead of reading 'mask' from ghrsss,
+ because mur_sst file   has no mask field, only the 'bad' grid-cells it has.
 !da-------- 
