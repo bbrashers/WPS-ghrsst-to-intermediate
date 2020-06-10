@@ -46,6 +46,9 @@ need to make to compile the program.
 Bart Brashers
 bbrashers@ramboll.com
 2020-06-02
-2020-06-10 !da ------------------ 
-'SST_MASK' replaced the 'LANDSEA'; 
-I need to move forward subroutine call reading analysed_sst and need create "mask_in" instead of reading it from ghrsss, because mur_sst file has no mask field, only 'bad' grid-cells it has !da--------
+
+!da ------  
+ 2020-06-10  
+ 'SST_MASK' replaced the 'LANDSEA'; 
+ I need to move forward subroutine call reading analysed_sst and need create "mask_in" instead of reading it from ghrsss, because mur_sst   file has no mask field, only 'bad' grid-cells it has
+!da-------- 
