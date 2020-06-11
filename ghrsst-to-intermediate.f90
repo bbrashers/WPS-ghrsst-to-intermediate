@@ -12,7 +12,7 @@ program ghrsst_to_intermediate
 !   https://podaac.jpl.nasa.gov/datasetlist?ids=ProcessingLevel&values=*4*&search=GHRSST&view=list
 !   https://podaac.jpl.nasa.gov/dataset/JPL_OUROCEAN-L4UHfnd-GLOB-G1SST
 !   https://podaac.jpl.nasa.gov/dataset/MUR-JPL-L4-GLOB-v4.1
-!da: 2020-06-05 version 1.4  : LANDSEA was replaced with SST_MASK follwoing the ideas in thread Mon May 11, 2020 9:09 pm:
+!da: 2020-06-11 version 1.4  : LANDSEA was replaced with SST_MASK follwoing the ideas in thread 2020/05/11:
 ! https://forum.mmm.ucar.edu/phpBB3/viewtopic.php?f=31&t=9049
 !----------------------------------------------------------------------
 ! This program is free software, using GNU General Public License v3.0.
@@ -362,8 +362,50 @@ program ghrsst_to_intermediate
   if (write_landsea .or. append_landsea) then
 
      allocate( mask_in(nx,ny) )
-
+		       mask_in=0                     !da
      rcode = nf_inq_varid(cdfid,'mask',id)
+     IF ( rcode .NE. NF_NOERR ) then     !da ------
+	    ! CALL HANDLE_ERR(rcode)
+	   allocate( sst_in(nx,ny) ) !da
+         rcode = nf_inq_varid(cdfid,'analysed_sst',id)
+	   if (debug) write(*,*) "rcode,id of analysed_sst =",rcode, id
+! Get the 2D grid of values for SST - to create mask only
+      rcode = nf_inq_var(cdfid,id,varnam,ivtype,ndims,dimids,natts)
+      if (debug) write(*,*) 'ID, Number of dims for SST  ',id,ndims
+	    rcode = nf_get_att_int (cdfid,id,"_FillValue",  bad_value) 
+      if (debug) write(*,*) "SST: _FillValue  ",    bad_value ! -32768
+		 
+      do i = 1,ndims
+        rcode = nf_inq_dimlen(cdfid,dimids(i),idims(i))
+        if (debug) write(*,*) 'SST Dimension ',	i,idims(i)
+      enddo
+     if (nx /= idims(1)) print*, "nx (lon) and idims(1) don't match."
+     if (ny /= idims(2)) print*, "ny (lat) and idims(2) don't match."
+     if ( 1 /= idims(3)) print*, "idims(3) is not 1."
+
+     istart(1) = 1
+     istop(1)  = nx
+     istart(2) = 1
+     istop(2)  = ny
+     istart(3) = 1
+     istop(3)  = 1
+     rcode = nf_get_vara_int2(cdfid,id,istart,istop,sst_in)
+      if (debug) then
+        write(*,*) "SST rcode = ", rcode
+        write(*,*) "minval(sst_in) = ",minval(sst_in)
+        write(*,*) "maxval(sst_in) = ",maxval(sst_in)
+	    end if
+		                         ! GHRSST' Land/Sea flags (1==open-sea, 2==land; 5,9,13 - lakes and ice)  
+	  where (sst_in /= bad_value) mask_in = 1 ! sea  in GHRSST'
+	  where (sst_in == bad_value) mask_in = 2 ! land in GHRSST'
+	   if (debug) then
+								    i = nx/5 ; j = ny/2
+        write(*,*) "(i,j)       = ",i,j,'; nx,ny ', nx,ny
+        write(*,*) "sst_in(i,j),  sst_in(nx,ny) = ",sst_in(i,j) ,';',  sst_in(nx,ny)
+        write(*,*) "mask_in(i,j),mask_in(nx,ny) = ",mask_in(i,j),';', mask_in(nx,ny)
+       end if 
+		    deallocate( sst_in )		
+      else                                 !da ------     
      rcode = nf_inq_var(cdfid,id,varnam,ivtype,ndims,dimids,natts)
      if (debug) write(*,*) 'ID, Number of dims for mask ',id,ndims
      do i = 1,ndims
@@ -382,6 +424,7 @@ program ghrsst_to_intermediate
      istart(3) = 1
      istop(3)  = 1
      rcode     = nf_get_vara_int1(cdfid,id,istart,istop,mask_in)
+      end if !da -------
 
      if (write_sst .or. write_landsea) then
         allocate( landsea(nx,ny) )
