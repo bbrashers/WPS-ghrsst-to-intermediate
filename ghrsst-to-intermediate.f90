@@ -12,7 +12,7 @@ program ghrsst_to_intermediate
 !   https://podaac.jpl.nasa.gov/datasetlist?ids=ProcessingLevel&values=*4*&search=GHRSST&view=list
 !   https://podaac.jpl.nasa.gov/dataset/JPL_OUROCEAN-L4UHfnd-GLOB-G1SST
 !   https://podaac.jpl.nasa.gov/dataset/MUR-JPL-L4-GLOB-v4.1
-!da: 2020-06-11 version 1.4  : LANDSEA was replaced with SST_MASK follwoing the ideas in thread 2020/05/11:
+!da: 2020-06-11 version 1.4  : LANDSEA was replaced with SST_MASK following the ideas in thread 2020/05/11:
 ! https://forum.mmm.ucar.edu/phpBB3/viewtopic.php?f=31&t=9049
 !----------------------------------------------------------------------
 ! This program is free software, using GNU General Public License v3.0.
