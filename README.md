@@ -18,7 +18,7 @@ outside of the GHRSST data coverage area, then you'll want to retain
 the SST fields in whatever other datasets you're using for the rest of
 the required inputs to WRF.
 
-If your chosen dataset is global, then you may optionally NOT ungrib the 
+If your chosen dataset is global, then you may optionally NOT ungrib the
 SST fields from whatever other datasets you're using for the rest of the
 required intput to WRF. Do that by eliminating the line containing
 "SST" from the Vtable:
@@ -34,15 +34,17 @@ the current directory, to extract the minimum domain in the
 SST:YYYY-MM-DD_HH files. I call the script from my WPS generator
 script.
 
-COMPILING
-
-A sample makefile is included, with some commented-out blocks for different
-compilers.
-
-I have one report that "integer, external" should be "integer, intrinsic" 
-for gfortran (gcc). That's the only change to the *.f90 files you might
-need to make to compile the program.
-
 Bart Brashers
 bbrashers@ramboll.com
-2020-06-02
+2020-04-16
+
+###################
+20230504:!da v1.5 updates at https://github.com/dmitryale/WPS-ghrsst-to-intermediate
+!cd ~/MUR_SST/WPS-interp-intermediate-master/; make; cp -p ghrsst-to-intermediate ../. ;
+!cd .. ; ./ghrsst-to-intermediate --sst -l -d -g geo_em.d01.nc out/JPL-L4_GHRSST-SSTfnd-MUR-GLOB-v02.0-fv04.1_20230503.nc
+!da: 2023-05-04 version 1.5  : MUR_SST updated on 20230425 (real SST in-situ degC; seconds since 1970-01-01;
+!da: 'where' replaced with do i=1,nx ... cycles; Use new repository  wget_mur_sst.sh =>
+!da: di=3; CDAY5=$(date +"%Y%m%d" -d "-${di} day");  CDAY_5=$(date +"%Y-%m-%d" -d "-${di} day") ; day="${CDAY_5}T09:00:00Z" ;
+! fnm=JPL-L4_GHRSST-SSTfnd-MUR-GLOB-v02.0-fv04.1_${CDAY5}.nc ; lon1=-23.0 ; lon2=0.0 ; lat1=22.0 ; lat2=38.0 ;
+! URL="https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.nc?analysed_sst%5B($day):1:($day)%5D%5B($lat1):1:($lat2)%5D%5B($lon1):1:($lon2)%5D"
+! wget $URL -O out/$fnm
